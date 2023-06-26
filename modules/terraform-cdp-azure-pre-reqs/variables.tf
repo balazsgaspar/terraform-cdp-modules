@@ -39,11 +39,12 @@ variable "env_prefix" {
   description = "Shorthand name for the environment. Used in resource descriptions"
 }
 
-# variable "public_key_text" {
-#   type = string
+variable "public_key_text" {
+   type = string
 
-#   description = "SSH Public key string for the nodes of the CDP environment"
-# }
+   description = "SSH Public key string for the nodes of the CDP environment"
+}
+
 # ------- CDP Environment Deployment -------
 variable "deployment_template" {
   type = string
