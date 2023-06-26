@@ -82,15 +82,18 @@
   tasks:
 
 ############# CDP Credential #############
-    - name: Create CDP Cross Account Credential for AWS
+    - name: Create CDP Cross Account Credential for Azure
       cloudera.cloud.env_cred:
         cloud: "{{ plat__infra_type }}"
         name: "{{ plat__xacccount_credential_name }}"
-        role: "{{ plat__aws_xaccount_role_arn }}"
+        subscription: "{{ plat__azure_subscription_id }}"
+        tenant: "{{ plat__azure_tenant_id }}"
+        application: "{{ plat__azure_xaccount_app_uuid }}"
+        secret: "{{ plat__azure_xaccount_app_pword }}"
         state: present
 
 ############# CDP Environment #############
-    - name: Start set up of CDP Environment Deployment on AWS
+    - name: Start set up of CDP Environment Deployment on Azure
       block:
         - name: Call cloudera.cloud.env to register CDP environment
           cloudera.cloud.env:
@@ -99,21 +102,22 @@
             credential: "{{ plat__xacccount_credential_name }}"
             cloud: "{{ plat__infra_type }}"
             region: "{{ plat__region }}"
-            default_sg: "{{ plat__aws_security_group_default_id }}"
-            knox_sg: "{{ plat__aws_security_group_knox_id }}"
-            log_location: "{{ plat__aws_log_location }}"
-            log_identity: "{{ plat__aws_log_instance_profile_arn }}"
-            public_key_id: "{{ plat__public_key_id }}"
+            default_sg: "{{ plat__azure_security_group_default_uri }}"
+            knox_sg: "{{ plat__azure_security_group_knox_uri }}"
+            log_location: "{{ plat__azure_log_location }}"
+            log_identity: "{{ plat__azure_log_identity_id }}"
+            backup_location: "{{ plat__azure_backup_location }}"
+            public_key_text: "{{ plat__public_key_text }}"
             workload_analytics: "{{ plat__workload_analytics }}"
-            vpc_id: "{{ plat__aws_vpc_id }}"
-            subnet_ids: "{{ plat__aws_subnets_for_cdp }}"
+            network: "{{ plat__azure_vnet_name }}"
+            subnet_ids: "{{ plat__azure_subnet_names_for_cdp }}"
             tags: "{{ plat__tags }}"
             tunnel: "{{ plat__tunnel }}"
-            endpoint_access_scheme: "{{ plat__endpoint_access_scheme | default(omit) }}"
-            endpoint_access_subnets: "{{ plat__aws_public_subnet_ids | default(omit) }}"
+            resource_gp: "{{ plat__azure_resourcegroup_name }}"        
+            use_single_resource_group: "{{ plat__use_single_resource_group }}"
+            public_ip: "{{ plat__use_public_ips }}"
             freeipa:
               instanceCountByGroup: "{{ plat__env_freeipa_instances }}"
-              multiAz: "{{ plat__env_multiaz }}"
           async: 3600 # 1 hour timeout
           poll: 0
           register: __cdp_env_setup
@@ -143,7 +147,7 @@
             name: "{{ plat__env_name }}"
           register: plat__cdp_env_info
           failed_when: plat__cdp_env_info.environments | length == 0
-    
+
     # Resume normal service
     - name: Set fact for CDP Environment CRN
       ansible.builtin.set_fact:
@@ -252,33 +256,34 @@
         plat__cdp_pub_user_group_crn: "{{ __cdp_pub_user_group_info | community.general.json_query('group.crn') }}"
 
 ############# IDBroker Mappings #############
-    - name: Set CDP IDBroker Mappings for AWS
+
+    - name: Set IDBroker Mappings for CDP on Azure
       cloudera.cloud.env_idbroker:
         name: "{{ plat__env_name }}"
         sync: no
-        data_access: "{{ plat__aws_datalake_admin_role_arn }}"
-        ranger_audit: "{{ plat__aws_ranger_audit_role_arn }}"
-        ranger_cloud_access: "{{ (plat__enable_raz | bool) | ternary(plat__aws_datalake_admin_role_arn, omit) }}" # TODO: Review this setting
+        data_access: "{{ plat__azure_datalakeadmin_identity_id }}"
+        ranger_audit: "{{ plat__azure_ranger_audit_identity_id }}"
+        ranger_cloud_access: "{{ (plat__enable_raz | bool) | ternary(plat__azure_raz_identity_id, omit) }}"
         mappings:
           - accessor: "{{ plat__cdp_pub_admin_group_crn }}"
-            role: "{{ plat__aws_datalake_admin_role_arn }}"
+            role: "{{ plat__azure_datalakeadmin_identity_id }}"
           - accessor: "{{ plat__cdp_pub_user_group_crn }}"
-            role: "{{ plat__aws_datalake_admin_role_arn }}"
+            role: "{{ plat__azure_datalakeadmin_identity_id }}"
 
 ############# CDP Datalake #############
-    - name: Start set up of CDP Datalake for AWS
+
+    - name: Start set up of CDP Datalake for Azure
       cloudera.cloud.datalake:
         name: "{{ plat__datalake_name }}"
         env: "{{ plat__env_name }}"
-        instance_profile: "{{ plat__aws_idbroker_instance_profile_arn }}"
-        storage: "{{ plat__aws_storage_location }}"
+        managed_identity: "{{ plat__azure_idbroker_identity_id }}"
+        storage: "{{ plat__azure_storage_location }}"
         runtime: "{{ plat__datalake_version | default(omit) }}"
         scale: "{{ plat__datalake_scale | default(omit) }}"
         tags: "{{ plat__tags }}"
         raz: "{{ plat__enable_raz }}"
-        multi_az: "{{ plat__env_multiaz }}"
         state: present
-      async: 3600 # 1 hour timeout
+      async: 10000
       poll: 0
       register: __cdp_dl_setup            
 
@@ -302,5 +307,5 @@
         jid: "{{ __cdp_dl_setup.ansible_job_id }}"
       register: __cdp_dl_setup_async
       until: __cdp_dl_setup_async.finished
-      retries: 120
+      retries: 240
       delay: 30
